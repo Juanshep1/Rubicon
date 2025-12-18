@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		99B100022EF300000070F3C1 /* RubiconEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 99B100012EF300000070F3C1 /* RubiconEngine */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		99A924FC2EF26A6F0070F3C1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				99B100022EF300000070F3C1 /* RubiconEngine in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = Rubicon;
 			packageProductDependencies = (
+				99B100012EF300000070F3C1 /* RubiconEngine */,
 			);
 			productName = Rubicon;
 			productReference = 99A924EE2EF26A6C0070F3C1 /* Rubicon.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 99A924E52EF26A6C0070F3C1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				99B100002EF300000070F3C1 /* XCLocalSwiftPackageReference "RubiconEngine" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 99A924EF2EF26A6C0070F3C1 /* Products */;
 			projectDirPath = "";
@@ -410,7 +419,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = rubicon.Rubicon;
+				PRODUCT_BUNDLE_IDENTIFIER = com.juanshephard.RubiconGame;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -438,7 +447,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = rubicon.Rubicon;
+				PRODUCT_BUNDLE_IDENTIFIER = com.juanshephard.RubiconGame;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -558,6 +567,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		99B100002EF300000070F3C1 /* XCLocalSwiftPackageReference "RubiconEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = RubiconEngine;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		99B100012EF300000070F3C1 /* RubiconEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RubiconEngine;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 99A924E62EF26A6C0070F3C1 /* Project object */;
 }

@@ -6,12 +6,13 @@
 //
 
 import SwiftUI
+import RubiconEngine
 
 @main
 struct RubiconApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainMenuView()
         }
     }
 }
