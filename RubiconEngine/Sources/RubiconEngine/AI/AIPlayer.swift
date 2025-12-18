@@ -141,7 +141,7 @@ public actor AIPlayer {
     // MARK: - Hard: Very challenging AI (deep search, smart strategy)
 
     private func selectHardMove(validMoves: [Move], state: GameState) async -> Move {
-        // Hard: Strong AI - deep search, full threat analysis, positional play
+        // Hard: Strong AI - deep search, full threat analysis, positional play, CUTTHROAT
 
         // Check for immediate wins (including strategic locks)
         let lockMoves = validMoves.filter { if case .lock = $0.type { return true }; return false }
@@ -164,6 +164,11 @@ public actor AIPlayer {
             return blockMove
         }
 
+        // CUTTHROAT: Aggressive pattern disruption captures
+        if let aggressiveCapture = findAggressiveCapture(validMoves: validMoves, state: state) {
+            return aggressiveCapture
+        }
+
         // Block opponent threats
         if let threatBlock = findThreatBlockingMove(validMoves: validMoves, state: state) {
             return threatBlock
@@ -172,6 +177,11 @@ public actor AIPlayer {
         // Use break strategically if opponent is close to winning
         if let breakMove = findStrategicBreak(validMoves: validMoves, state: state) {
             return breakMove
+        }
+
+        // CUTTHROAT: Deny river stones when advantageous
+        if let riverDeny = findRiverDenialMove(validMoves: validMoves, state: state) {
+            return riverDeny
         }
 
         // Order moves with killer move heuristic (top 15 for deeper search)
@@ -184,7 +194,7 @@ public actor AIPlayer {
     // MARK: - Expert: Master level - optimal play with deep analysis
 
     private func selectExpertMove(validMoves: [Move], state: GameState) async -> Move {
-        // Expert: Very strong AI - deep search, full threat analysis, positional mastery
+        // Expert: Very strong AI - deep search, full threat analysis, positional mastery, RUTHLESS
 
         // Check for winning locks first (always take a win)
         let lockMoves = validMoves.filter { if case .lock = $0.type { return true }; return false }
@@ -207,6 +217,16 @@ public actor AIPlayer {
             return blockMove
         }
 
+        // CUTTHROAT: Hunt down opponent patterns aggressively
+        if let huntMove = findPatternHuntingMove(validMoves: validMoves, state: state) {
+            return huntMove
+        }
+
+        // CUTTHROAT: Aggressive captures to dominate material
+        if let aggressiveCapture = findAggressiveCapture(validMoves: validMoves, state: state) {
+            return aggressiveCapture
+        }
+
         // Block opponent near-wins (one move away from victory)
         if let threatBlock = findThreatBlockingMove(validMoves: validMoves, state: state) {
             return threatBlock
@@ -217,9 +237,19 @@ public actor AIPlayer {
             return forcingMove
         }
 
-        // Use break strategically
-        if let breakMove = findStrategicBreak(validMoves: validMoves, state: state) {
+        // CUTTHROAT: Elimination pressure - drive opponent toward elimination
+        if let eliminationPressure = findEliminationPressureMove(validMoves: validMoves, state: state) {
+            return eliminationPressure
+        }
+
+        // Use break aggressively to disrupt any locked patterns
+        if let breakMove = findAggressiveBreak(validMoves: validMoves, state: state) {
             return breakMove
+        }
+
+        // Deny river when opponent needs it
+        if let riverDeny = findRiverDenialMove(validMoves: validMoves, state: state) {
+            return riverDeny
         }
 
         // Order moves with advanced heuristics (top 18 for deep search)
@@ -232,7 +262,7 @@ public actor AIPlayer {
     // MARK: - Master: Near-perfect play with comprehensive analysis
 
     private func selectMasterMove(validMoves: [Move], state: GameState) async -> Move {
-        // Master: Near-perfect AI - deepest search, comprehensive analysis, multi-turn planning
+        // Master: Near-perfect AI - ABSOLUTELY RUTHLESS, shows no mercy, exploits every weakness
 
         // Check for winning locks first (always take a win)
         let lockMoves = validMoves.filter { if case .lock = $0.type { return true }; return false }
@@ -255,24 +285,54 @@ public actor AIPlayer {
             return blockMove
         }
 
+        // RUTHLESS: Maximum aggression - hunt and destroy all enemy patterns
+        if let huntMove = findPatternHuntingMove(validMoves: validMoves, state: state) {
+            return huntMove
+        }
+
+        // RUTHLESS: Multiple threat creation
+        if let forcingMove = findForcingMove(validMoves: validMoves, state: state) {
+            return forcingMove
+        }
+
+        // RUTHLESS: Aggressive multi-capture setup
+        if let multiCapture = findMultiCaptureSetup(validMoves: validMoves, state: state) {
+            return multiCapture
+        }
+
+        // RUTHLESS: Suffocation strategy - cut off opponent options
+        if let suffocateMove = findSuffocationMove(validMoves: validMoves, state: state) {
+            return suffocateMove
+        }
+
+        // RUTHLESS: Drive toward elimination when possible
+        if let eliminationPressure = findEliminationPressureMove(validMoves: validMoves, state: state) {
+            return eliminationPressure
+        }
+
         // Block all threats comprehensively
         if let threatBlock = findThreatBlockingMove(validMoves: validMoves, state: state) {
             return threatBlock
         }
 
-        // Look for forcing sequences (moves that force opponent into bad positions)
-        if let forcingMove = findForcingMove(validMoves: validMoves, state: state) {
-            return forcingMove
+        // Aggressive captures
+        if let aggressiveCapture = findAggressiveCapture(validMoves: validMoves, state: state) {
+            return aggressiveCapture
         }
 
-        // Evaluate long-term positional play
+        // Use break aggressively - break ANY pattern that could help opponent
+        if let breakMove = findAggressiveBreak(validMoves: validMoves, state: state) {
+            return breakMove
+        }
+
+        // Evaluate long-term positional domination
         if let positionalMove = findBestPositionalMove(validMoves: validMoves, state: state) {
             return positionalMove
         }
 
-        // Use break strategically to disrupt opponent's plans
-        if let breakMove = findStrategicBreak(validMoves: validMoves, state: state) {
-            return breakMove
+        // River denial
+        if let riverDeny = findRiverDenialMove(validMoves: validMoves, state: state) {
+            return riverDeny
         }
 
         // Order all moves with comprehensive heuristics (evaluate more moves)
@@ -280,6 +340,310 @@ public actor AIPlayer {
 
         // Use minimax with depth 6 (maximum challenge)
         return await selectMinimaxMove(validMoves: orderedMoves, state: state, depth: 6)
+    }
+
+    // MARK: - Cutthroat Tactical Methods
+
+    /// Find captures that aggressively disrupt opponent's patterns
+    private func findAggressiveCapture(validMoves: [Move], state: GameState) -> Move? {
+        let captureMoves = validMoves.filter { move in
+            if case .shift(_, let to) = move.type {
+                if let stone = state.board.stone(at: to), stone.owner == player.opponent, !stone.isLocked {
+                    return true
+                }
+            }
+            return false
+        }
+
+        guard !captureMoves.isEmpty else { return nil }
+
+        // Score each capture by how much it disrupts opponent
+        var bestCapture: Move?
+        var bestScore = 0.0
+
+        let opponentPatterns = evaluator.patternDetector.detectPatterns(
+            on: state.board, for: player.opponent, unlockedOnly: true
+        )
+
+        for move in captureMoves {
+            if case .shift(_, let to) = move.type {
+                var score = 50.0 // Base capture value
+
+                // Huge bonus for capturing stone that's part of a pattern
+                for pattern in opponentPatterns {
+                    if pattern.positions.contains(to) {
+                        switch pattern.type {
+                        case .cross:
+                            score += 500.0 // Prevent potential instant win
+                        case .line:
+                            score += Double(pattern.positions.count) * 60.0
+                        case .gate:
+                            score += 150.0
+                        case .bend:
+                            score += 80.0
+                        }
+                    }
+                }
+
+                // Bonus for captures that also create our own patterns
+                let result = rulesEngine.executeMove(move, on: state)
+                if result.success {
+                    let newPatterns = evaluator.patternDetector.detectPatterns(
+                        on: result.newState.board, for: player, unlockedOnly: true
+                    )
+                    score += Double(newPatterns.count) * 30.0
+                }
+
+                // Bonus for captures near center (strategic position)
+                if to.column >= 2 && to.column <= 3 && to.row >= 2 && to.row <= 3 {
+                    score += 25.0
+                }
+
+                if score > bestScore {
+                    bestScore = score
+                    bestCapture = move
+                }
+            }
+        }
+
+        // Only return if significantly valuable
+        return bestScore > 100.0 ? bestCapture : nil
+    }
+
+    /// Hunt down and destroy opponent patterns aggressively
+    private func findPatternHuntingMove(validMoves: [Move], state: GameState) -> Move? {
+        let opponentPatterns = evaluator.patternDetector.detectPatterns(
+            on: state.board, for: player.opponent, unlockedOnly: true
+        )
+
+        guard !opponentPatterns.isEmpty else { return nil }
+
+        // Prioritize patterns by threat level
+        var targetPositions: [(Position, Double)] = []
+
+        for pattern in opponentPatterns {
+            var threatValue = 0.0
+            switch pattern.type {
+            case .cross:
+                threatValue = 1000.0 // Must destroy
+            case .line:
+                threatValue = Double(pattern.positions.count) * 100.0
+                if pattern.positions.count >= 4 { threatValue += 300.0 } // Near Long Road
+            case .gate:
+                threatValue = 200.0
+            case .bend:
+                threatValue = 100.0
+            }
+
+            for pos in pattern.positions {
+                targetPositions.append((pos, threatValue))
+            }
+        }
+
+        // Find moves that can capture these high-value targets
+        var bestMove: Move?
+        var bestValue = 0.0
+
+        for move in validMoves {
+            if case .shift(_, let to) = move.type {
+                if let stone = state.board.stone(at: to), stone.owner == player.opponent, !stone.isLocked {
+                    let value = targetPositions.filter { $0.0 == to }.map { $0.1 }.reduce(0, +)
+                    if value > bestValue {
+                        bestValue = value
+                        bestMove = move
+                    }
+                }
+            }
+        }
+
+        return bestValue > 150.0 ? bestMove : nil
+    }
+
+    /// Find moves that pressure opponent toward elimination
+    private func findEliminationPressureMove(validMoves: [Move], state: GameState) -> Move? {
+        let opponentRiver = state.river(for: player.opponent).count
+        let opponentHand = player.opponent == .light ? state.lightStonesInHand : state.darkStonesInHand
+        let opponentReserves = opponentRiver + opponentHand
+
+        // Only apply pressure if opponent is getting low
+        guard opponentReserves <= 5 else { return nil }
+
+        // Look for captures that push them closer to elimination
+        var bestMove: Move?
+        var bestPressure = 0.0
+
+        for move in validMoves {
+            let result = rulesEngine.executeMove(move, on: state)
+            if result.success {
+                let newOpponentRiver = result.newState.river(for: player.opponent).count
+                let newOpponentHand = player.opponent == .light
+                    ? result.newState.lightStonesInHand
+                    : result.newState.darkStonesInHand
+                let newReserves = newOpponentRiver + newOpponentHand
+
+                // Big bonus for reducing their reserves
+                let pressureScore = Double(opponentReserves - newReserves) * 100.0
+
+                // Huge bonus if this could lead to elimination
+                if newReserves <= 2 {
+                    if pressureScore > bestPressure {
+                        bestPressure = pressureScore + 500.0
+                        bestMove = move
+                    }
+                } else if pressureScore > bestPressure {
+                    bestPressure = pressureScore
+                    bestMove = move
+                }
+            }
+        }
+
+        return bestPressure > 50.0 ? bestMove : nil
+    }
+
+    /// Draw from river to deny opponent stones
+    private func findRiverDenialMove(validMoves: [Move], state: GameState) -> Move? {
+        let riverMoves = validMoves.filter { if case .drawFromRiver = $0.type { return true }; return false }
+        guard let riverMove = riverMoves.first else { return nil }
+
+        // Check if opponent might want river stones
+        let opponentHand = player.opponent == .light ? state.lightStonesInHand : state.darkStonesInHand
+        let myHand = state.currentPlayerStonesInHand
+        let riverCount = state.river(for: player).count
+
+        // Deny if:
+        // 1. Opponent is low on stones (needs river)
+        // 2. We have good material advantage (can afford to take)
+        // 3. River has multiple stones we could use
+
+        if opponentHand <= 3 && riverCount >= 1 {
+            return riverMove // Deny them resources
+        }
+
+        if myHand <= 4 && riverCount >= 2 {
+            return riverMove // We need stones too
+        }
+
+        // Strategic denial when we're ahead
+        let myTotal = state.board.allPositions(for: player).count + myHand
+        let oppTotal = state.board.allPositions(for: player.opponent).count + opponentHand
+        if myTotal > oppTotal + 2 && riverCount >= 1 {
+            return riverMove // Maintain advantage
+        }
+
+        return nil
+    }
+
+    /// Aggressively break any opponent locked pattern
+    private func findAggressiveBreak(validMoves: [Move], state: GameState) -> Move? {
+        let breakMoves = validMoves.filter { if case .breakLock = $0.type { return true }; return false }
+        guard !breakMoves.isEmpty else { return nil }
+
+        let oppLockedPatterns = state.lockedPatterns(for: player.opponent)
+        guard !oppLockedPatterns.isEmpty else { return nil }
+
+        // Score each break target
+        var bestBreak: Move?
+        var bestValue = 0.0
+
+        for move in breakMoves {
+            if case .breakLock(_, let targetPos) = move.type {
+                for pattern in oppLockedPatterns {
+                    if pattern.positions.contains(targetPos) {
+                        var value = 0.0
+
+                        // Value based on pattern type
+                        switch pattern.type {
+                        case .cross:
+                            value = 1000.0
+                        case .line:
+                            value = Double(pattern.positions.count) * 80.0
+                        case .gate:
+                            value = 200.0
+                        case .bend:
+                            value = 100.0
+                        }
+
+                        // Bonus if this disrupts their victory path
+                        let lockedLines = oppLockedPatterns.filter { $0.type == .line }.count
+                        let lockedGates = oppLockedPatterns.filter { $0.type == .gate }.count
+                        let lockedBends = oppLockedPatterns.filter { $0.type == .bend }.count
+
+                        if pattern.type == .line && lockedLines >= 1 { value += 150.0 }
+                        if pattern.type == .gate && lockedGates >= 1 { value += 150.0 }
+                        if pattern.type == .gate && lockedLines >= 1 { value += 100.0 }
+                        if pattern.type == .bend && lockedBends >= 2 { value += 150.0 }
+
+                        if value > bestValue {
+                            bestValue = value
+                            bestBreak = move
+                        }
+                        break
+                    }
+                }
+            }
+        }
+
+        // Always break if opponent has any significant locked pattern
+        return bestValue > 80.0 ? bestBreak : nil
+    }
+
+    /// Set up positions to capture multiple stones
+    private func findMultiCaptureSetup(validMoves: [Move], state: GameState) -> Move? {
+        var bestMove: Move?
+        var bestPotential = 0
+
+        for move in validMoves {
+            let result = rulesEngine.executeMove(move, on: state)
+            if result.success {
+                // Count how many captures we can make next turn
+                let nextMoves = rulesEngine.validMoves(for: result.newState)
+                var captureCount = 0
+
+                for nextMove in nextMoves {
+                    if case .shift(_, let to) = nextMove.type {
+                        if let stone = result.newState.board.stone(at: to),
+                           stone.owner == player.opponent, !stone.isLocked {
+                            captureCount += 1
+                        }
+                    }
+                }
+
+                if captureCount > bestPotential {
+                    bestPotential = captureCount
+                    bestMove = move
+                }
+            }
+        }
+
+        return bestPotential >= 3 ? bestMove : nil
+    }
+
+    /// Restrict opponent's movement options (suffocation)
+    private func findSuffocationMove(validMoves: [Move], state: GameState) -> Move? {
+        var bestMove: Move?
+        var bestReduction = 0
+
+        let currentOppMoves = rulesEngine.moveValidator.validMoves(for: player.opponent, state: simulatePassTurn(state)).count
+
+        for move in validMoves {
+            let result = rulesEngine.executeMove(move, on: state)
+            if result.success {
+                // Simulate opponent's turn after our move
+                var nextState = result.newState
+                nextState.advanceTurn()
+                let newOppMoves = rulesEngine.moveValidator.validMoves(for: player.opponent, state: nextState).count
+
+                let reduction = currentOppMoves - newOppMoves
+
+                if reduction > bestReduction {
+                    bestReduction = reduction
+                    bestMove = move
+                }
+            }
+        }
+
+        // Only use if we significantly reduce their options
+        return bestReduction >= 5 ? bestMove : nil
     }
 
     // MARK: - Advanced Strategic Methods

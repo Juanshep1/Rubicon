@@ -16,6 +16,11 @@ class GameViewModel: ObservableObject {
     // Audio manager reference
     private let audioManager = AudioManager.shared
 
+    // Achievement tracking
+    private let achievementManager = AchievementManager.shared
+    private var stonesLostByPlayer = 0
+    private var wasPlayerDown5Stones = false
+
     private var cancellables = Set<AnyCancellable>()
     private var previousMoveCount = 0
 
@@ -61,6 +66,17 @@ class GameViewModel: ObservableObject {
         // Play lock sound
         audioManager.playLock()
 
+        // Track achievement
+        if state.currentPlayer.opponent == .light { // Player just locked
+            achievementManager.recordLock()
+            if pattern.type == .cross {
+                achievementManager.recordCrossFormed()
+            }
+            if pattern.type == .line && pattern.positions.count >= 5 {
+                achievementManager.recordLongRoadFormed()
+            }
+        }
+
         // Check for victory
         if isGameOver {
             playVictorySound()
@@ -83,10 +99,16 @@ class GameViewModel: ObservableObject {
     }
 
     func drawFromRiver() {
+        let wasPlayerDraw = state.currentPlayer == .light
         gameController.performDrawFromRiver()
 
         // Play move sound
         audioManager.playStoneMove()
+
+        // Track achievement
+        if wasPlayerDraw {
+            achievementManager.recordRiverDraw()
+        }
 
         // Check for victory or AI turn
         if isGameOver {
@@ -120,6 +142,8 @@ class GameViewModel: ObservableObject {
         showVictoryBanner = false
         isInBreakMode = false
         breakSacrificePositions = []
+        stonesLostByPlayer = 0
+        wasPlayerDown5Stones = false
         gameController.startNewGame(gameMode: gameMode)
     }
 
@@ -162,12 +186,18 @@ class GameViewModel: ObservableObject {
     }
 
     func performBreak(sacrificePositions: [Position], targetPosition: Position) {
+        let wasPlayerBreak = state.currentPlayer == .light
         gameController.performBreak(sacrificePositions: sacrificePositions, targetPosition: targetPosition)
         isInBreakMode = false
         breakSacrificePositions = []
 
         // Play lock sound for breaking
         audioManager.playLock()
+
+        // Track achievement
+        if wasPlayerBreak {
+            achievementManager.recordBreak()
+        }
 
         // Check for victory
         if isGameOver {
@@ -305,5 +335,66 @@ class GameViewModel: ObservableObject {
             object: nil,
             userInfo: ["playerWon": playerWon]
         )
+
+        // Record achievement for game end
+        recordGameEndAchievements()
+    }
+
+    // MARK: - Achievement Recording
+
+    private func recordGameEndAchievements() {
+        guard state.isGameOver else { return }
+
+        let playerWon = state.winner == .light
+        let moveCount = state.moveHistory.count
+
+        // Determine difficulty
+        var difficulty = 0
+        if case .vsAI(let aiDiff) = state.gameMode {
+            difficulty = aiDiff.rawValue
+        }
+
+        // Determine victory type
+        var victoryType: String? = nil
+        if let winCondition = state.winCondition {
+            switch winCondition {
+            case .theStar: victoryType = "The Star"
+            case .theLongRoad: victoryType = "The Long Road"
+            case .theFortress: victoryType = "The Fortress"
+            case .twinRivers: victoryType = "Twin Rivers"
+            case .gateAndPath: victoryType = "Gate & Path"
+            case .threeBends: victoryType = "Three Bends"
+            }
+        } else if state.winner != nil {
+            // Winner exists but no winCondition means elimination
+            victoryType = "Elimination"
+        }
+
+        // Record to achievement manager
+        achievementManager.recordGameEnd(
+            won: playerWon,
+            difficulty: difficulty,
+            stonesLost: stonesLostByPlayer,
+            moveCount: moveCount,
+            wasDown5Stones: wasPlayerDown5Stones,
+            victoryType: playerWon ? victoryType : nil
+        )
+    }
+
+    /// Track player stone loss for achievements
+    func trackPlayerStoneLoss(count: Int = 1) {
+        stonesLostByPlayer += count
+
+        // Check if player is down 5+ stones (for comeback achievement)
+        let playerStones = state.board.allPositions(for: .light).count + state.lightStonesInHand
+        let opponentStones = state.board.allPositions(for: .dark).count + state.darkStonesInHand
+        if opponentStones - playerStones >= 5 {
+            wasPlayerDown5Stones = true
+        }
+    }
+
+    /// Track captures by player for achievements
+    func trackPlayerCapture(count: Int = 1) {
+        achievementManager.recordCapture(count: count)
     }
 }

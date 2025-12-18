@@ -8,6 +8,7 @@ struct MainMenuView: View {
     @State private var showSettings = false
     @State private var showHowToPlay = false
     @State private var showLadder = false
+    @State private var showProfile = false
 
     // Animation states
     @State private var titleScale: CGFloat = 0.8
@@ -72,6 +73,9 @@ struct MainMenuView: View {
             }
             .fullScreenCover(isPresented: $showLadder) {
                 LadderView()
+            }
+            .fullScreenCover(isPresented: $showProfile) {
+                ProfileView()
             }
             .onAppear {
                 audioManager.startBackgroundMusic()
@@ -409,6 +413,18 @@ struct MainMenuView: View {
                 isCompact: true
             ) {
                 showSettings = true
+            }
+
+            // Profile
+            EpicMenuButton(
+                icon: "person.crop.circle.fill",
+                title: "Profile",
+                subtitle: "View achievements and stats",
+                isPrimary: false,
+                accentColor: Color(red: 0.7, green: 0.5, blue: 0.9),
+                isCompact: true
+            ) {
+                showProfile = true
             }
         }
     }
