@@ -1366,3 +1366,436 @@ extension MoveType {
         return nil
     }
 }
+
+// MARK: - Story Mode AI
+
+extension AIPlayer {
+
+    /// Select a move based on story character personality
+    /// Each opponent has unique behaviors that match their character
+    public func selectMoveForStory(state: GameState, personality: StoryAIPersonality, lastPlayerMoveType: MoveType? = nil) async -> Move? {
+        guard state.currentPlayer == player && !state.isGameOver else { return nil }
+
+        let config = personality.config
+        let validMoves = rulesEngine.validMoves(for: state)
+        guard !validMoves.isEmpty else { return nil }
+
+        // Categorize moves
+        let lockMoves = validMoves.filter { if case .lock = $0.type { return true }; return false }
+        let captureMoves = validMoves.filter { move in
+            if case .shift(_, let to) = move.type {
+                return state.board.stone(at: to) != nil
+            }
+            return false
+        }
+        let breakMoves = validMoves.filter { if case .breakLock = $0.type { return true }; return false }
+        let riverMoves = validMoves.filter { if case .drawFromRiver = $0.type { return true }; return false }
+        let dropMoves = validMoves.filter { if case .drop = $0.type { return true }; return false }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CHAOS FACTOR: Random "genius" moves (Twins specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.chaosFactor > 0 && Double.random(in: 0...1) < config.chaosFactor {
+            // Make a random but not terrible move
+            let nonPassMoves = validMoves.filter { if case .pass = $0.type { return false }; return true }
+            if !nonPassMoves.isEmpty {
+                return nonPassMoves.randomElement()!
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // MIRROR PLAY: Copy player's move type (Twins specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.mirrorChance > 0 && Double.random(in: 0...1) < config.mirrorChance {
+            if let lastMove = lastPlayerMoveType {
+                if let mirrored = findMirrorMove(lastMoveType: lastMove, validMoves: validMoves, state: state) {
+                    return mirrored
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ALWAYS: Check for immediate wins
+        // ═══════════════════════════════════════════════════════════════════
+        if !lockMoves.isEmpty {
+            for lockMove in lockMoves {
+                let result = rulesEngine.executeMove(lockMove, on: state)
+                if result.victoryResult.hasWinner && result.victoryResult.winner == player {
+                    // Ishara's hesitation - gives player ONE chance
+                    if config.hesitationOnKillingBlow && Double.random(in: 0...1) < 0.15 {
+                        // Don't take the winning move yet
+                    } else {
+                        return lockMove
+                    }
+                }
+            }
+        }
+
+        // Check other instant wins
+        for move in validMoves {
+            let result = rulesEngine.executeMove(move, on: state)
+            if result.victoryResult.hasWinner && result.victoryResult.winner == player {
+                if config.hesitationOnKillingBlow && Double.random(in: 0...1) < 0.15 {
+                    // Skip this one chance
+                } else {
+                    return move
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // THREAT AWARENESS: Block opponent wins (based on awareness)
+        // ═══════════════════════════════════════════════════════════════════
+        if Double.random(in: 0...1) < config.threatAwareness {
+            if let blockMove = findOpponentWinBlock(validMoves: validMoves, state: state) {
+                return blockMove
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // DESPERATION AGGRESSION (Viktor specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.desperationAggression {
+            let myMaterial = state.board.allPositions(for: player).count + (player == .light ? state.lightStonesInHand : state.darkStonesInHand)
+            let oppMaterial = state.board.allPositions(for: player.opponent).count + (player.opponent == .light ? state.lightStonesInHand : state.darkStonesInHand)
+
+            if myMaterial < oppMaterial - 2 {
+                // Behind on material - get aggressive!
+                if let aggressiveCapture = findAggressiveCapture(validMoves: validMoves, state: state) {
+                    return aggressiveCapture
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CENTER OBSESSION (Marcus specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.centerObsession {
+            if let centerMove = findCenterMove(dropMoves: dropMoves, state: state) {
+                return centerMove
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PATTERN PREFERENCE (based on character)
+        // ═══════════════════════════════════════════════════════════════════
+        if let preferredType = config.patternPreference, !lockMoves.isEmpty {
+            let preferredLocks = lockMoves.filter { move in
+                if case .lock(_, let positions) = move.type {
+                    let patternType = inferPatternType(positions: positions)
+                    return patternType == preferredType
+                }
+                return false
+            }
+            if !preferredLocks.isEmpty && Double.random(in: 0...1) < 0.7 {
+                return preferredLocks.randomElement()!
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // AGGRESSION vs DEFENSE
+        // ═══════════════════════════════════════════════════════════════════
+        let isAggressive = Double.random(in: 0...1) < config.aggressionBias
+
+        if isAggressive {
+            // Offensive play
+            if !lockMoves.isEmpty {
+                if let strategicLock = selectStrategicLockForPersonality(lockMoves: lockMoves, state: state, config: config) {
+                    return strategicLock
+                }
+            }
+
+            if !captureMoves.isEmpty {
+                if let capture = findAggressiveCapture(validMoves: validMoves, state: state) {
+                    return capture
+                }
+                return captureMoves.randomElement()!
+            }
+
+            // Pattern hunting (if enabled)
+            if config.useTrapMoves {
+                if let huntMove = findPatternHuntingMove(validMoves: validMoves, state: state) {
+                    return huntMove
+                }
+            }
+        } else {
+            // Defensive play
+            if Double.random(in: 0...1) < config.threatAwareness {
+                if let threatBlock = findThreatBlockingMove(validMoves: validMoves, state: state) {
+                    return threatBlock
+                }
+            }
+
+            // Build patterns defensively
+            if !lockMoves.isEmpty {
+                let gateLocks = lockMoves.filter { move in
+                    if case .lock(_, let positions) = move.type {
+                        return inferPatternType(positions: positions) == .gate
+                    }
+                    return false
+                }
+                if !gateLocks.isEmpty {
+                    return gateLocks.randomElement()!
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // BREAKS (based on personality)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.useBreaks && !config.neverBreaksPatterns && !breakMoves.isEmpty {
+            if let breakMove = findAggressiveBreak(validMoves: validMoves, state: state) {
+                return breakMove
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TRAP MOVES (Elias, Amara specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.useTrapMoves {
+            if let forcingMove = findForcingMove(validMoves: validMoves, state: state) {
+                return forcingMove
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SUFFOCATION (Ghost, Grandmaster specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.useSuffocation {
+            if let suffocateMove = findSuffocationMove(validMoves: validMoves, state: state) {
+                return suffocateMove
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // RIVER DENIAL
+        // ═══════════════════════════════════════════════════════════════════
+        if config.useRiverDenial {
+            if let riverDeny = findRiverDenialMove(validMoves: validMoves, state: state) {
+                return riverDeny
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ADAPTIVE STRATEGY (Amara specialty)
+        // ═══════════════════════════════════════════════════════════════════
+        if config.adaptiveness > 0.5 && state.moveHistory.count > 10 {
+            // After 10 moves, try to counter player's strategy
+            if let counterMove = findCounterStrategyMove(validMoves: validMoves, state: state) {
+                return counterMove
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // FALL BACK TO MINIMAX
+        // ═══════════════════════════════════════════════════════════════════
+        let orderedMoves = Array(orderMovesAdvanced(validMoves, state: state).prefix(config.movesToEvaluate))
+        return await selectMinimaxMove(validMoves: orderedMoves, state: state, depth: config.minimaxDepth)
+    }
+
+    // MARK: - Personality-Specific Helpers
+
+    /// Find a move that mirrors the player's last move type
+    private func findMirrorMove(lastMoveType: MoveType, validMoves: [Move], state: GameState) -> Move? {
+        switch lastMoveType {
+        case .drop:
+            let drops = validMoves.filter { if case .drop = $0.type { return true }; return false }
+            return drops.randomElement()
+        case .shift:
+            let shifts = validMoves.filter { if case .shift = $0.type { return true }; return false }
+            return shifts.randomElement()
+        case .lock:
+            let locks = validMoves.filter { if case .lock = $0.type { return true }; return false }
+            return locks.randomElement()
+        case .drawFromRiver:
+            let rivers = validMoves.filter { if case .drawFromRiver = $0.type { return true }; return false }
+            return rivers.first
+        case .breakLock:
+            let breaks = validMoves.filter { if case .breakLock = $0.type { return true }; return false }
+            return breaks.randomElement()
+        case .pass:
+            return nil // Don't mirror passes
+        }
+    }
+
+    /// Find a move to the center of the board (Marcus obsession)
+    private func findCenterMove(dropMoves: [Move], state: GameState) -> Move? {
+        let centerPositions = [
+            Position(column: 2, row: 2),
+            Position(column: 2, row: 3),
+            Position(column: 3, row: 2),
+            Position(column: 3, row: 3)
+        ]
+
+        for pos in centerPositions {
+            if state.board.stone(at: pos) == nil {
+                for move in dropMoves {
+                    if case .drop(let dropPos) = move.type, dropPos == pos {
+                        return move
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Select strategic lock based on personality preferences
+    private func selectStrategicLockForPersonality(lockMoves: [Move], state: GameState, config: StoryAIConfig) -> Move? {
+        guard !lockMoves.isEmpty else { return nil }
+
+        // If we have a signature victory, prioritize that
+        if let signature = config.signatureVictory {
+            let myLocked = state.lockedPatterns(for: player)
+
+            switch signature {
+            case .theLongRoad:
+                // Look for 4+ length lines
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type, positions.count >= 4 {
+                        if inferPatternType(positions: positions) == .line {
+                            return move
+                        }
+                    }
+                }
+
+            case .theStar:
+                // Look for cross patterns
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        if inferPatternType(positions: positions) == .cross {
+                            return move
+                        }
+                    }
+                }
+
+            case .twinRivers:
+                // Look for lines, prefer non-overlapping with existing
+                let existingLines = myLocked.filter { $0.type == .line }
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        if inferPatternType(positions: positions) == .line {
+                            let wouldOverlap = existingLines.contains { !$0.positions.isDisjoint(with: positions) }
+                            if !wouldOverlap {
+                                return move
+                            }
+                        }
+                    }
+                }
+
+            case .theFortress:
+                // Look for gates
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        if inferPatternType(positions: positions) == .gate {
+                            return move
+                        }
+                    }
+                }
+
+            case .gateAndPath, .threeBends:
+                // Use standard selection
+                break
+            }
+        }
+
+        // Fall back to standard strategic lock
+        return selectStrategicLock(lockMoves: lockMoves, state: state)
+    }
+
+    /// Find a move that counters the player's apparent strategy (Amara)
+    private func findCounterStrategyMove(validMoves: [Move], state: GameState) -> Move? {
+        // Analyze player's locked patterns to determine their strategy
+        let playerLocked = state.lockedPatterns(for: player.opponent)
+        let playerLines = playerLocked.filter { $0.type == .line }
+        let playerGates = playerLocked.filter { $0.type == .gate }
+        let playerBends = playerLocked.filter { $0.type == .bend }
+
+        // Determine likely player strategy
+        if playerLines.count >= 1 {
+            // Player going for Twin Rivers or Long Road - block lines!
+            if let blockMove = findThreatBlockingMove(validMoves: validMoves, state: state) {
+                return blockMove
+            }
+            // Or break their lines
+            if let breakMove = findAggressiveBreak(validMoves: validMoves, state: state) {
+                return breakMove
+            }
+        }
+
+        if playerGates.count >= 1 {
+            // Player going for Fortress or Gate & Path - break gates!
+            let breakMoves = validMoves.filter { if case .breakLock = $0.type { return true }; return false }
+            for move in breakMoves {
+                if case .breakLock(_, let targetPos) = move.type {
+                    for gate in playerGates {
+                        if gate.positions.contains(targetPos) {
+                            return move
+                        }
+                    }
+                }
+            }
+        }
+
+        if playerBends.count >= 2 {
+            // Player going for Three Bends - break bends!
+            let breakMoves = validMoves.filter { if case .breakLock = $0.type { return true }; return false }
+            for move in breakMoves {
+                if case .breakLock(_, let targetPos) = move.type {
+                    for bend in playerBends {
+                        if bend.positions.contains(targetPos) {
+                            return move
+                        }
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+}
+
+// MARK: - Story Mode Game Controller Extension
+
+@MainActor
+public extension GameController {
+
+    /// Execute AI move with story personality
+    func executeStoryAIMove(personality: StoryAIPersonality, lastPlayerMoveType: MoveType? = nil) async {
+        guard state.currentPlayer == .dark && !state.isGameOver else { return }
+
+        let ai = AIPlayer(difficulty: personality.config.baseDifficulty, player: .dark)
+
+        if let move = await ai.selectMoveForStory(state: state, personality: personality, lastPlayerMoveType: lastPlayerMoveType) {
+            // Add delay for UX
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            guard state.currentPlayer == .dark && !state.isGameOver else { return }
+
+            // Validate move is still valid
+            let validation = RulesEngine().moveValidator.validate(move, state: state)
+            guard validation.isValid else {
+                performPass()
+                return
+            }
+
+            switch move.type {
+            case .drop(let position):
+                performDrop(at: position)
+            case .shift(let from, let to):
+                performShift(from: from, to: to)
+            case .lock(_, let positions):
+                if let pattern = availablePatterns.first(where: { $0.positions == positions }) {
+                    performLock(pattern: pattern)
+                } else {
+                    performPass()
+                }
+            case .drawFromRiver:
+                performDrawFromRiver()
+            case .breakLock(let sacrifice, let target):
+                performBreak(sacrificePositions: sacrifice, targetPosition: target)
+            case .pass:
+                performPass()
+            }
+        }
+    }
+}

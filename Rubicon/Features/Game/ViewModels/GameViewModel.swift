@@ -24,8 +24,40 @@ class GameViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var previousMoveCount = 0
 
+    private var currentGameMode: GameMode = .localPassAndPlay
+
+    // Story mode AI personality (each opponent has unique playstyle)
+    var storyPersonality: StoryAIPersonality?
+    private var lastPlayerMoveType: MoveType?
+
     init(gameMode: GameMode = .localPassAndPlay) {
+        self.currentGameMode = gameMode
         self.gameController = GameController(gameMode: gameMode)
+        setupObservers()
+    }
+
+    /// Initialize with a story personality for unique opponent behavior
+    init(gameMode: GameMode = .localPassAndPlay, storyPersonality: StoryAIPersonality?) {
+        self.currentGameMode = gameMode
+        self.storyPersonality = storyPersonality
+        self.gameController = GameController(gameMode: gameMode)
+        setupObservers()
+    }
+
+    func resetGame() {
+        // Clear all state
+        showVictoryBanner = false
+        showPatternLockAnimation = false
+        lastLockedPattern = nil
+        isInBreakMode = false
+        breakSacrificePositions = []
+        stonesLostByPlayer = 0
+        wasPlayerDown5Stones = false
+        previousMoveCount = 0
+
+        // Create new game controller
+        cancellables.removeAll()
+        gameController = GameController(gameMode: currentGameMode)
         setupObservers()
     }
 
@@ -240,7 +272,15 @@ class GameViewModel: ObservableObject {
         let moveCountBefore = state.moveHistory.count
 
         Task { @MainActor in
-            await gameController.executeAIMove()
+            // Use story personality if available (unique opponent playstyles)
+            if let personality = storyPersonality {
+                await gameController.executeStoryAIMove(
+                    personality: personality,
+                    lastPlayerMoveType: lastPlayerMoveType
+                )
+            } else {
+                await gameController.executeAIMove()
+            }
 
             // Play sound if AI made a move
             if gameController.state.moveHistory.count > moveCountBefore {
@@ -269,6 +309,11 @@ class GameViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Track the player's last move type for mirror play (Twins specialty)
+    func recordPlayerMoveType(_ moveType: MoveType) {
+        lastPlayerMoveType = moveType
     }
 
     // MARK: - Cell Tap Handler

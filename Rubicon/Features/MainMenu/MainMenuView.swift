@@ -9,6 +9,7 @@ struct MainMenuView: View {
     @State private var showHowToPlay = false
     @State private var showLadder = false
     @State private var showProfile = false
+    @State private var showStoryMode = false
 
     // Animation states
     @State private var titleScale: CGFloat = 0.8
@@ -76,6 +77,9 @@ struct MainMenuView: View {
             }
             .fullScreenCover(isPresented: $showProfile) {
                 ProfileView()
+            }
+            .fullScreenCover(isPresented: $showStoryMode) {
+                StoryModeView()
             }
             .onAppear {
                 audioManager.startBackgroundMusic()
@@ -340,7 +344,18 @@ struct MainMenuView: View {
 
     private var epicMenuButtons: some View {
         VStack(spacing: 14) {
-            // Ranked Ladder - Featured action
+            // Story Mode - Featured
+            EpicMenuButton(
+                icon: "book.pages.fill",
+                title: "Story Mode",
+                subtitle: "The Rubicon Chronicles",
+                isPrimary: true,
+                accentColor: Color(red: 0.6, green: 0.4, blue: 0.8)
+            ) {
+                showStoryMode = true
+            }
+
+            // Ranked Ladder
             EpicMenuButton(
                 icon: "chart.line.uptrend.xyaxis",
                 title: "Ranked Ladder",
