@@ -443,6 +443,10 @@ struct PatternCard: View {
             Image(systemName: "square.grid.2x2")
         case .cross:
             Image(systemName: "plus")
+        case .pod:
+            Image(systemName: "t.square")
+        case .hook:
+            Image(systemName: "l.square")
         }
     }
 }

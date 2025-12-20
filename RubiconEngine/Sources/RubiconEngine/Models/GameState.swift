@@ -192,13 +192,30 @@ public struct GameState: Codable, Sendable, Equatable {
         }
     }
 
-    // Draw from own river
+    // Draw from own river (single stone - legacy)
     @discardableResult
     public mutating func drawFromRiver(for player: Player) -> Stone? {
         if player == .light {
             return lightRiver.isEmpty ? nil : lightRiver.removeFirst()
         } else {
             return darkRiver.isEmpty ? nil : darkRiver.removeFirst()
+        }
+    }
+
+    // River Reclamation (Third Edition): Take ALL stones from river at once
+    // Returns count of stones reclaimed
+    @discardableResult
+    public mutating func reclaimAllFromRiver(for player: Player) -> Int {
+        if player == .light {
+            let count = lightRiver.count
+            lightRiver.removeAll()
+            lightStonesInHand += count
+            return count
+        } else {
+            let count = darkRiver.count
+            darkRiver.removeAll()
+            darkStonesInHand += count
+            return count
         }
     }
 

@@ -44,57 +44,371 @@ public actor AIPlayer {
         }
     }
 
-    // MARK: - Beginner: Completely random, makes many mistakes
+    // MARK: - Beginner: Plays like a new player learning Rubicon
 
     private func selectBeginnerMove(validMoves: [Move], lockMoves: [Move], state: GameState) -> Move {
-        // Beginner: Almost entirely random - perfect for learning the game
-        // Only locks patterns 15% of the time (often misses opportunities)
-        if !lockMoves.isEmpty && Double.random(in: 0...1) < 0.15 {
-            return lockMoves.randomElement()!
+        // Beginner AI understands Rubicon basics but makes tactical errors:
+        // - Knows to lock patterns (but sometimes picks suboptimal ones)
+        // - Tries to build toward patterns (but inefficiently)
+        // - Low threat awareness (often misses opponent wins)
+        // - Prefers center control (basic strategy)
+        // - Makes positional mistakes
+
+        let captureMoves = validMoves.filter { move in
+            if case .shift(_, let to) = move.type {
+                return state.board.stone(at: to) != nil
+            }
+            return false
+        }
+        let riverMoves = validMoves.filter { if case .drawFromRiver = $0.type { return true }; return false }
+
+        // PRIORITY 1: Always take a winning lock (knows how to win!)
+        for lockMove in lockMoves {
+            let result = rulesEngine.executeMove(lockMove, on: state)
+            if result.victoryResult.hasWinner && result.victoryResult.winner == player {
+                return lockMove
+            }
         }
 
-        // 80% of the time, just pick a completely random move (including suboptimal ones)
-        let nonPassMoves = validMoves.filter { if case .pass = $0.type { return false }; return true }
-        if !nonPassMoves.isEmpty {
-            return nonPassMoves.randomElement()!
-        }
-        return validMoves.randomElement()!
-    }
-
-    // MARK: - Easy: Mostly random with occasional smart moves
-
-    private func selectEasyMove(validMoves: [Move], lockMoves: [Move], captureMoves: [Move], riverMoves: [Move], state: GameState) -> Move {
-        // Easy: Mostly random but occasionally makes good moves
-        // This should be beatable by most players
-
-        // 70% of the time, just play randomly like beginner
-        if Double.random(in: 0...1) < 0.7 {
-            return selectBeginnerMove(validMoves: validMoves, lockMoves: lockMoves, state: state)
-        }
-
-        // 30% of the time, make a somewhat smart move:
-
-        // Lock if available (but only 40% of the remaining 30% = 12% overall)
-        if !lockMoves.isEmpty && Double.random(in: 0...1) < 0.4 {
-            return lockMoves.randomElement()! // Random lock, not strategic
+        // PRIORITY 2: Lock patterns when available (70% of the time)
+        // Beginner often locks eagerly without considering if it's the best pattern
+        if !lockMoves.isEmpty && Double.random(in: 0...1) < 0.70 {
+            // Beginner doesn't always pick the best pattern - sometimes picks randomly
+            if Double.random(in: 0...1) < 0.4 {
+                // 40% chance: just pick any pattern (suboptimal)
+                return lockMoves.randomElement()!
+            }
+            // 60% chance: pick the largest pattern (decent choice)
+            let sortedLocks = lockMoves.sorted { m1, m2 in
+                if case .lock(_, let p1) = m1.type, case .lock(_, let p2) = m2.type {
+                    return p1.count > p2.count
+                }
+                return false
+            }
+            return sortedLocks.first!
         }
 
-        // Capture if possible (30% of remaining = 9% overall)
-        if !captureMoves.isEmpty && Double.random(in: 0...1) < 0.3 {
+        // PRIORITY 3: Take obvious captures (50% of the time)
+        // Beginner sees captures but doesn't always take them
+        if !captureMoves.isEmpty && Double.random(in: 0...1) < 0.50 {
             return captureMoves.randomElement()!
         }
 
-        // Draw from river only when very low on stones
-        if !riverMoves.isEmpty && state.currentPlayerStonesInHand < 3 && Double.random(in: 0...1) < 0.3 {
+        // PRIORITY 4: Draw from river when low on stones (60% of the time)
+        if !riverMoves.isEmpty && state.currentPlayerStonesInHand <= 3 && Double.random(in: 0...1) < 0.60 {
             return riverMoves.first!
         }
 
-        // Otherwise random (not greedy - greedy is too strong for Easy)
-        let nonPassMoves = validMoves.filter { if case .pass = $0.type { return false }; return true }
-        if !nonPassMoves.isEmpty {
-            return nonPassMoves.randomElement()!
+        // PRIORITY 5: Try to build patterns (basic pattern awareness)
+        if let patternBuildMove = findPatternBuildingMove(validMoves: validMoves, state: state, mistakeChance: 0.5) {
+            return patternBuildMove
         }
-        return validMoves.randomElement()!
+
+        // PRIORITY 6: Prefer center control (basic positional play)
+        if let centerMove = findCenterControlMove(validMoves: validMoves, state: state, mistakeChance: 0.4) {
+            return centerMove
+        }
+
+        // FALLBACK: Pick a reasonable drop or shift (not completely random)
+        return selectReasonableMove(validMoves: validMoves, state: state)
+    }
+
+    // MARK: - Easy: Plays like an intermediate player
+
+    private func selectEasyMove(validMoves: [Move], lockMoves: [Move], captureMoves: [Move], riverMoves: [Move], state: GameState) -> Move {
+        // Easy AI plays like someone who knows Rubicon well but still makes mistakes:
+        // - Always takes wins
+        // - Usually locks patterns (prefers good ones)
+        // - Better threat awareness (sometimes blocks opponent wins)
+        // - Actively pursues patterns
+        // - Takes good captures
+        // - Occasional tactical errors (20% mistake rate)
+
+        // PRIORITY 1: Always take a winning lock
+        for lockMove in lockMoves {
+            let result = rulesEngine.executeMove(lockMove, on: state)
+            if result.victoryResult.hasWinner && result.victoryResult.winner == player {
+                return lockMove
+            }
+        }
+
+        // PRIORITY 2: Block opponent wins (50% awareness - sometimes misses)
+        if Double.random(in: 0...1) < 0.50 {
+            if let blockMove = findBasicOpponentWinBlock(validMoves: validMoves, state: state) {
+                return blockMove
+            }
+        }
+
+        // PRIORITY 3: Lock patterns strategically (85% of the time)
+        if !lockMoves.isEmpty && Double.random(in: 0...1) < 0.85 {
+            // Easy AI usually picks the best pattern
+            if Double.random(in: 0...1) < 0.75 {
+                // 75%: Strategic lock (prefer valuable patterns)
+                return selectBasicStrategicLock(lockMoves: lockMoves, state: state)
+            } else {
+                // 25%: Random lock (mistake)
+                return lockMoves.randomElement()!
+            }
+        }
+
+        // PRIORITY 4: Take good captures (70% of the time)
+        if !captureMoves.isEmpty && Double.random(in: 0...1) < 0.70 {
+            // Prefer captures that disrupt patterns
+            if let goodCapture = findBasicGoodCapture(captureMoves: captureMoves, state: state) {
+                return goodCapture
+            }
+            return captureMoves.randomElement()!
+        }
+
+        // PRIORITY 5: Draw from river when needed (80% of the time)
+        if !riverMoves.isEmpty && state.currentPlayerStonesInHand <= 4 && Double.random(in: 0...1) < 0.80 {
+            return riverMoves.first!
+        }
+
+        // PRIORITY 6: Build toward patterns (better than Beginner)
+        if let patternBuildMove = findPatternBuildingMove(validMoves: validMoves, state: state, mistakeChance: 0.25) {
+            return patternBuildMove
+        }
+
+        // PRIORITY 7: Good positional play
+        if let positionalMove = findCenterControlMove(validMoves: validMoves, state: state, mistakeChance: 0.2) {
+            return positionalMove
+        }
+
+        // FALLBACK: Select a reasonable move
+        return selectReasonableMove(validMoves: validMoves, state: state)
+    }
+
+    // MARK: - Helper Methods for Lower Difficulty AI
+
+    /// Find a move that builds toward forming a pattern
+    private func findPatternBuildingMove(validMoves: [Move], state: GameState, mistakeChance: Double) -> Move? {
+        // Mistake chance: sometimes pick a suboptimal move
+        if Double.random(in: 0...1) < mistakeChance {
+            return nil  // "Miss" this opportunity
+        }
+
+        let dropMoves = validMoves.filter { if case .drop = $0.type { return true }; return false }
+        let shiftMoves = validMoves.filter { if case .shift = $0.type { return true }; return false }
+
+        var bestMoves: [(Move, Int)] = []
+
+        for move in dropMoves + shiftMoves {
+            var testState = state
+
+            // Simulate the move
+            let targetPos: Position
+            switch move.type {
+            case .drop(let pos):
+                testState.board.place(Stone(owner: player), at: pos)
+                targetPos = pos
+            case .shift(let from, let to):
+                testState.board.move(from: from, to: to)
+                targetPos = to
+            default:
+                continue
+            }
+
+            // Count how many patterns this creates or extends
+            let newPatterns = evaluator.patternDetector.detectPatterns(on: testState.board, for: player, unlockedOnly: true)
+            var patternValue = 0
+
+            for pattern in newPatterns {
+                if pattern.positions.contains(targetPos) {
+                    patternValue += pattern.positions.count * 10
+                    // Bonus for specific pattern types
+                    switch pattern.type {
+                    case .cross: patternValue += 100  // Instant win potential
+                    case .line: patternValue += pattern.positions.count >= 4 ? 50 : 20
+                    case .gate: patternValue += 30
+                    case .hook: patternValue += 25
+                    case .bend: patternValue += 15
+                    case .pod: patternValue += 10
+                    }
+                }
+            }
+
+            if patternValue > 0 {
+                bestMoves.append((move, patternValue))
+            }
+        }
+
+        // Sort by value and pick from top moves (with some randomness)
+        bestMoves.sort { $0.1 > $1.1 }
+
+        if bestMoves.count > 3 {
+            // Pick from top 3 (introduces some suboptimality)
+            let topMoves = Array(bestMoves.prefix(3))
+            return topMoves.randomElement()?.0
+        } else if let best = bestMoves.first {
+            return best.0
+        }
+
+        return nil
+    }
+
+    /// Find a move that controls the center of the board
+    private func findCenterControlMove(validMoves: [Move], state: GameState, mistakeChance: Double) -> Move? {
+        if Double.random(in: 0...1) < mistakeChance {
+            return nil
+        }
+
+        let centerPositions = [
+            Position(column: 2, row: 2), Position(column: 2, row: 3),
+            Position(column: 3, row: 2), Position(column: 3, row: 3)
+        ]
+
+        let nearCenterPositions = [
+            Position(column: 1, row: 2), Position(column: 1, row: 3),
+            Position(column: 4, row: 2), Position(column: 4, row: 3),
+            Position(column: 2, row: 1), Position(column: 3, row: 1),
+            Position(column: 2, row: 4), Position(column: 3, row: 4)
+        ]
+
+        var centerMoves: [Move] = []
+        var nearCenterMoves: [Move] = []
+
+        for move in validMoves {
+            if case .drop(let pos) = move.type {
+                if centerPositions.contains(pos) && state.board.stone(at: pos) == nil {
+                    centerMoves.append(move)
+                } else if nearCenterPositions.contains(pos) && state.board.stone(at: pos) == nil {
+                    nearCenterMoves.append(move)
+                }
+            }
+        }
+
+        if !centerMoves.isEmpty {
+            return centerMoves.randomElement()
+        }
+        if !nearCenterMoves.isEmpty && Double.random(in: 0...1) < 0.6 {
+            return nearCenterMoves.randomElement()
+        }
+
+        return nil
+    }
+
+    /// Select a basic strategic lock (for Easy AI)
+    private func selectBasicStrategicLock(lockMoves: [Move], state: GameState) -> Move {
+        // Prefer: Cross > Long Line > Gate > Hook > Line > Bend > Pod
+        var scoredMoves: [(Move, Int)] = []
+
+        for move in lockMoves {
+            if case .lock(_, let positions) = move.type {
+                var score = positions.count * 10
+                let patternType = inferPatternType(positions: positions)
+
+                switch patternType {
+                case .cross: score += 500
+                case .line:
+                    score += positions.count >= 4 ? 200 : 50
+                case .gate: score += 100
+                case .hook: score += 75
+                case .bend: score += 40
+                case .pod: score += 20
+                }
+
+                scoredMoves.append((move, score))
+            }
+        }
+
+        scoredMoves.sort { $0.1 > $1.1 }
+        return scoredMoves.first?.0 ?? lockMoves.first!
+    }
+
+    /// Find a basic opponent win block (for Easy AI)
+    private func findBasicOpponentWinBlock(validMoves: [Move], state: GameState) -> Move? {
+        let opponent = player.opponent
+        let opponentPatterns = evaluator.patternDetector.detectPatterns(on: state.board, for: opponent, unlockedOnly: true)
+
+        // Look for near-wins (cross or long line)
+        for pattern in opponentPatterns {
+            if pattern.type == .cross || (pattern.type == .line && pattern.positions.count >= 4) {
+                // Find a capture or disruptive move
+                for move in validMoves {
+                    if case .shift(_, let to) = move.type {
+                        if pattern.positions.contains(to) {
+                            if let targetStone = state.board.stone(at: to), targetStone.owner == opponent {
+                                return move  // Capture disrupts the pattern
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Find a capture that disrupts opponent patterns (for Easy AI)
+    private func findBasicGoodCapture(captureMoves: [Move], state: GameState) -> Move? {
+        let opponent = player.opponent
+        let opponentPatterns = evaluator.patternDetector.detectPatterns(on: state.board, for: opponent, unlockedOnly: true)
+
+        if opponentPatterns.isEmpty {
+            return nil
+        }
+
+        // Prefer captures that hit pattern stones
+        for move in captureMoves {
+            if case .shift(_, let to) = move.type {
+                for pattern in opponentPatterns {
+                    if pattern.positions.contains(to) {
+                        return move
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Select a reasonable (non-random) move as fallback
+    private func selectReasonableMove(validMoves: [Move], state: GameState) -> Move {
+        // Filter out passes unless necessary
+        let nonPassMoves = validMoves.filter { if case .pass = $0.type { return false }; return true }
+
+        guard !nonPassMoves.isEmpty else {
+            return validMoves.randomElement()!
+        }
+
+        // Prefer drops over shifts (building presence)
+        let dropMoves = nonPassMoves.filter { if case .drop = $0.type { return true }; return false }
+        let shiftMoves = nonPassMoves.filter { if case .shift = $0.type { return true }; return false }
+
+        // Evaluate drops by position value
+        var scoredDrops: [(Move, Int)] = []
+        for move in dropMoves {
+            if case .drop(let pos) = move.type {
+                var score = 0
+                // Center preference
+                if pos.column >= 2 && pos.column <= 3 && pos.row >= 2 && pos.row <= 3 {
+                    score += 30
+                } else if pos.column >= 1 && pos.column <= 4 && pos.row >= 1 && pos.row <= 4 {
+                    score += 15
+                }
+                // Adjacency bonus (near own stones)
+                for neighbor in pos.orthogonalNeighbors {
+                    if let stone = state.board.stone(at: neighbor), stone.owner == player {
+                        score += 10
+                    }
+                }
+                scoredDrops.append((move, score))
+            }
+        }
+
+        if !scoredDrops.isEmpty {
+            scoredDrops.sort { $0.1 > $1.1 }
+            // Pick from top 3 with some randomness
+            let topMoves = Array(scoredDrops.prefix(min(3, scoredDrops.count)))
+            return topMoves.randomElement()?.0 ?? scoredDrops[0].0
+        }
+
+        if !shiftMoves.isEmpty {
+            return shiftMoves.randomElement()!
+        }
+
+        return nonPassMoves.randomElement()!
     }
 
     // MARK: - Medium: Balanced challenge with some strategy
@@ -381,6 +695,10 @@ public actor AIPlayer {
                             score += 150.0
                         case .bend:
                             score += 80.0
+                        case .pod:
+                            score += 40.0
+                        case .hook:
+                            score += 100.0 // Hooks are part of The Pincer
                         }
                     }
                 }
@@ -433,6 +751,10 @@ public actor AIPlayer {
                 threatValue = 200.0
             case .bend:
                 threatValue = 100.0
+            case .pod:
+                threatValue = 50.0
+            case .hook:
+                threatValue = 150.0 // Part of The Pincer
             }
 
             for pos in pattern.positions {
@@ -561,6 +883,10 @@ public actor AIPlayer {
                             value = 200.0
                         case .bend:
                             value = 100.0
+                        case .pod:
+                            value = 50.0
+                        case .hook:
+                            value = 120.0 // Part of The Pincer
                         }
 
                         // Bonus if this disrupts their victory path
@@ -685,6 +1011,9 @@ public actor AIPlayer {
         let gates = lockedPatterns.filter { $0.type == .gate }
         let bends = lockedPatterns.filter { $0.type == .bend }
 
+        let hooks = lockedPatterns.filter { $0.type == .hook }
+        let crosses = lockedPatterns.filter { $0.type == .cross }
+
         switch pattern.type {
         case .cross:
             return true // Instant win
@@ -692,13 +1021,22 @@ public actor AIPlayer {
             if pattern.positions.count >= 5 { return true } // Long Road
             if lines.count >= 1 { return true } // Twin Rivers
             if gates.count >= 1 { return true } // Gate & Path
+            if bends.count >= 2 { return true } // The Serpent (2 bends + 1 line)
             return false
         case .gate:
             if gates.count >= 1 { return true } // Fortress
+            if gates.count >= 2 { return true } // The Constellation (3 gates)
             if lines.count >= 1 { return true } // Gate & Path
+            if crosses.count >= 1 { return true } // The Phalanx (gate + cross)
             return false
         case .bend:
             if bends.count >= 2 { return true } // Three Bends
+            if bends.count >= 1 && lines.count >= 1 { return true } // The Serpent progress
+            return false
+        case .pod:
+            return false // Pod isn't part of victory sets
+        case .hook:
+            if hooks.count >= 1 { return true } // The Pincer (2 hooks)
             return false
         }
     }
@@ -793,20 +1131,29 @@ public actor AIPlayer {
                             var value = 0.0
 
                             // Value based on pattern type and victory proximity
+                            let oppHooks = oppLockedPatterns.filter { $0.type == .hook }
                             switch pattern.type {
                             case .line:
                                 value += Double(pattern.positions.count) * 50.0
                                 if oppLines.count >= 1 { value += 200.0 } // Would complete Twin Rivers
                                 if oppGates.count >= 1 { value += 150.0 } // Would complete Gate & Path
+                                if oppBends.count >= 2 { value += 150.0 } // Would complete The Serpent
                             case .gate:
                                 value += 150.0
                                 if oppGates.count >= 1 { value += 200.0 } // Would complete Fortress
+                                if oppGates.count >= 2 { value += 250.0 } // Would complete Constellation
                                 if oppLines.count >= 1 { value += 150.0 } // Would complete Gate & Path
                             case .bend:
                                 value += 80.0
                                 if oppBends.count >= 2 { value += 200.0 } // Would complete Three Bends
+                                if oppBends.count >= 1 && oppLines.count >= 1 { value += 100.0 } // Serpent progress
                             case .cross:
                                 value += 500.0 // Breaking a near-cross is critical
+                            case .pod:
+                                value += 30.0
+                            case .hook:
+                                value += 100.0
+                                if oppHooks.count >= 1 { value += 200.0 } // Would complete The Pincer
                             }
 
                             if value > bestValue {
@@ -1201,6 +1548,20 @@ public actor AIPlayer {
 
             case .cross:
                 score += 10000.0 // Instant win, should have been caught earlier
+
+            case .pod:
+                score += 30.0 // Minor pattern, not part of victory sets
+
+            case .hook:
+                let lockedHooks = myLockedPatterns.filter { $0.type == .hook }
+                score += 60.0
+                // Bonus if working toward The Pincer (2 hooks)
+                if lockedHooks.count >= 1 {
+                    let wouldBeNonOverlapping = lockedHooks.allSatisfy { !patternsOverlap($0.positions, info.positions) }
+                    if wouldBeNonOverlapping {
+                        score += 200.0 // Would complete The Pincer!
+                    }
+                }
             }
 
             scoredMoves.append((info.move, score))
@@ -1695,6 +2056,48 @@ extension AIPlayer {
             case .gateAndPath, .threeBends:
                 // Use standard selection
                 break
+
+            case .thePhalanx:
+                // Look for gate + cross combo
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        let type = inferPatternType(positions: positions)
+                        if type == .gate || type == .cross {
+                            return move
+                        }
+                    }
+                }
+
+            case .thePincer:
+                // Look for hooks
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        if inferPatternType(positions: positions) == .hook {
+                            return move
+                        }
+                    }
+                }
+
+            case .theSerpent:
+                // Look for bends and lines
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        let type = inferPatternType(positions: positions)
+                        if type == .bend || type == .line {
+                            return move
+                        }
+                    }
+                }
+
+            case .theConstellation:
+                // Look for gates (need 3)
+                for move in lockMoves {
+                    if case .lock(_, let positions) = move.type {
+                        if inferPatternType(positions: positions) == .gate {
+                            return move
+                        }
+                    }
+                }
             }
         }
 

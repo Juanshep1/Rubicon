@@ -70,12 +70,10 @@ public struct RulesEngine: Sendable {
             }
 
         case .drawFromRiver:
-            // Draw from the player's own river (their captured stones)
-            // Players can draw unlimited times (as long as river has stones)
-            if let _ = newState.drawFromRiver(for: move.player) {
-                // Stone goes back to player's hand
-                newState.incrementStonesInHand(for: move.player)
-            }
+            // River Reclamation (Third Edition): Take ALL stones from river at once
+            // Players can reclaim unlimited times (as long as river has stones)
+            // Each reclamation costs one turn but retrieves ALL captured stones
+            _ = newState.reclaimAllFromRiver(for: move.player)
 
         case .breakLock(let sacrificePositions, let targetPosition):
             // Remove sacrificed stones (add to river) - only remove player's own stones!

@@ -54,8 +54,23 @@ public struct MoveValidator: Sendable {
         if let target = state.board.stone(at: to) {
             if target.owner == player { return .invalid(reason: "Cannot capture own stone") }
             if target.isLocked { return .invalid(reason: "Cannot strike locked stone") }
+            // PHALANX PROTECTION: Cannot strike a supported stone (adjacent to friendly stone)
+            if isSupported(position: to, player: target.owner, board: state.board) {
+                return .invalid(reason: "Cannot strike supported stone (Phalanx)")
+            }
         }
         return .valid
+    }
+
+    /// Check if a stone at the given position is supported (adjacent to at least one friendly stone)
+    /// Phalanx Protection rule: Supported stones cannot be struck (but can still be surrounded)
+    public func isSupported(position: Position, player: Player, board: Board) -> Bool {
+        for neighbor in position.orthogonalNeighbors {
+            if let stone = board.stone(at: neighbor), stone.owner == player {
+                return true // Any friendly stone (locked or unlocked) provides support
+            }
+        }
+        return false
     }
 
     public func validateLock(positions: Set<Position>, player: Player, state: GameState) -> MoveValidationResult {
@@ -177,11 +192,20 @@ public struct MoveValidator: Sendable {
                     destinations.append(pos1)
                     let pos2 = Position(column: from.column + dir.0 * 2, row: from.row + dir.1 * 2)
                     if pos2.isValid {
-                        if state.board.isEmpty(at: pos2) { destinations.append(pos2) }
-                        else if let t = state.board.stone(at: pos2), t.owner != player, !t.isLocked { destinations.append(pos2) }
+                        if state.board.isEmpty(at: pos2) {
+                            destinations.append(pos2)
+                        } else if let t = state.board.stone(at: pos2), t.owner != player, !t.isLocked {
+                            // PHALANX PROTECTION: Only allow strike on isolated (unsupported) stones
+                            if !isSupported(position: pos2, player: t.owner, board: state.board) {
+                                destinations.append(pos2)
+                            }
+                        }
                     }
                 } else if let t = state.board.stone(at: pos1), t.owner != player, !t.isLocked {
-                    destinations.append(pos1)
+                    // PHALANX PROTECTION: Only allow strike on isolated (unsupported) stones
+                    if !isSupported(position: pos1, player: t.owner, board: state.board) {
+                        destinations.append(pos1)
+                    }
                 }
             }
         }

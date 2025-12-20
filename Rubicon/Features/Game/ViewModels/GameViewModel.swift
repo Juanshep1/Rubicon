@@ -409,6 +409,10 @@ class GameViewModel: ObservableObject {
             case .twinRivers: victoryType = "Twin Rivers"
             case .gateAndPath: victoryType = "Gate & Path"
             case .threeBends: victoryType = "Three Bends"
+            case .thePhalanx: victoryType = "The Phalanx"
+            case .thePincer: victoryType = "The Pincer"
+            case .theSerpent: victoryType = "The Serpent"
+            case .theConstellation: victoryType = "The Constellation"
             }
         } else if state.winner != nil {
             // Winner exists but no winCondition means elimination

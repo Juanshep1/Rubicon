@@ -82,6 +82,10 @@ public struct MoveEvaluator: Sendable {
                 score += 200.0  // Gates are valuable for multiple victory sets
             case .cross:
                 score += 10000.0 // Instant win (The Star)
+            case .pod:
+                score += 80.0  // Minor pattern
+            case .hook:
+                score += 150.0  // Hooks are valuable for The Pincer victory
             }
         }
         return score
@@ -93,6 +97,8 @@ public struct MoveEvaluator: Sendable {
         let lines = lockedPatterns.filter { $0.type == .line }
         let bends = lockedPatterns.filter { $0.type == .bend }
         let gates = lockedPatterns.filter { $0.type == .gate }
+        let hooks = lockedPatterns.filter { $0.type == .hook }
+        let crosses = lockedPatterns.filter { $0.type == .cross }
 
         // One line away from Twin Rivers
         if lines.count == 1 {
@@ -117,6 +123,30 @@ public struct MoveEvaluator: Sendable {
             bonus += 150.0
         }
 
+        // NEW VICTORY SET BONUSES (Third Edition)
+
+        // One hook away from The Pincer
+        if hooks.count == 1 {
+            bonus += 120.0
+        }
+
+        // The Phalanx progress (Gate + Cross)
+        if gates.count >= 1 && crosses.count >= 1 {
+            bonus += 600.0 // Very close to The Phalanx
+        }
+
+        // The Serpent progress (2 Bends + Line)
+        if bends.count >= 2 && lines.count >= 1 {
+            bonus += 400.0 // Very close to The Serpent
+        } else if bends.count >= 2 {
+            bonus += 150.0 // Two bends, need line
+        }
+
+        // Two gates toward The Constellation (3 Gates)
+        if gates.count == 2 {
+            bonus += 250.0
+        }
+
         return bonus
     }
 
@@ -135,6 +165,14 @@ public struct MoveEvaluator: Sendable {
                 multiplier = 150.0
             case .threeBends:
                 multiplier = 140.0
+            case .thePhalanx:
+                multiplier = 250.0 // Gate + Cross is powerful
+            case .thePincer:
+                multiplier = 160.0
+            case .theSerpent:
+                multiplier = 155.0
+            case .theConstellation:
+                multiplier = 180.0 // 3 Gates - very defensive
             }
             score += progressValue * multiplier
         }
@@ -326,6 +364,15 @@ public struct MoveEvaluator: Sendable {
             case .bend:
                 // If they have 2 bends, third completes Three Bends
                 if lockedBends.count >= 2 {
+                    isThreat = true
+                }
+            case .pod:
+                // Pod is a minor pattern, not typically a major threat
+                isThreat = false
+            case .hook:
+                // If they have a hook, another completes The Pincer
+                let lockedHooks = lockedPatterns.filter { $0.type == .hook }
+                if lockedHooks.count >= 1 {
                     isThreat = true
                 }
             }

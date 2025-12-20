@@ -149,7 +149,7 @@ struct ProfileView: View {
 
                 rankProgressBar
 
-                Text("\(ladderManager.stats.rankUpProgress)/\(ladderManager.currentRank.winsToRankUp) wins to rank up")
+                Text(ladderManager.lpDisplay)
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.5))
             }

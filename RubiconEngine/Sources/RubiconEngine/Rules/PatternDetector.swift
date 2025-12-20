@@ -9,6 +9,8 @@ public struct PatternDetector: Sendable {
         patterns.append(contentsOf: detectBends(on: board, for: player, unlockedOnly: unlockedOnly))
         patterns.append(contentsOf: detectGates(on: board, for: player, unlockedOnly: unlockedOnly))
         if let cross = detectCross(on: board, for: player, unlockedOnly: unlockedOnly) { patterns.append(cross) }
+        patterns.append(contentsOf: detectPods(on: board, for: player, unlockedOnly: unlockedOnly))
+        patterns.append(contentsOf: detectHooks(on: board, for: player, unlockedOnly: unlockedOnly))
         return patterns
     }
 
@@ -114,5 +116,103 @@ public struct PatternDetector: Sendable {
         guard let stone = board.stone(at: pos), stone.owner == player else { return false }
         if unlockedOnly && stone.isLocked { return false }
         return true
+    }
+
+    // POD: T-shape with 3 stones (2x1 rectangle + 1 adjacent stone perpendicular)
+    // Like a small T: two horizontal stones with one vertical extension
+    public func detectPods(on board: Board, for player: Player, unlockedOnly: Bool = true) -> [Pattern] {
+        var pods: [Pattern] = []
+        var seen: Set<Set<Position>> = []
+
+        for row in 0..<6 {
+            for col in 0..<6 {
+                let center = Position(column: col, row: row)
+                guard isValid(center, for: player, on: board, unlockedOnly: unlockedOnly) else { continue }
+
+                // Check all 4 T-orientations:
+                // 1. Horizontal bar with vertical stem down
+                // 2. Horizontal bar with vertical stem up
+                // 3. Vertical bar with horizontal stem left
+                // 4. Vertical bar with horizontal stem right
+
+                let tShapes: [[(Int, Int)]] = [
+                    // Horizontal bar (center + right) with stem down from center
+                    [(0, 0), (1, 0), (0, -1)],
+                    // Horizontal bar (center + right) with stem up from center
+                    [(0, 0), (1, 0), (0, 1)],
+                    // Horizontal bar (center + left) with stem down from center
+                    [(0, 0), (-1, 0), (0, -1)],
+                    // Horizontal bar (center + left) with stem up from center
+                    [(0, 0), (-1, 0), (0, 1)],
+                    // Vertical bar (center + up) with stem right from center
+                    [(0, 0), (0, 1), (1, 0)],
+                    // Vertical bar (center + up) with stem left from center
+                    [(0, 0), (0, 1), (-1, 0)],
+                    // Vertical bar (center + down) with stem right from center
+                    [(0, 0), (0, -1), (1, 0)],
+                    // Vertical bar (center + down) with stem left from center
+                    [(0, 0), (0, -1), (-1, 0)],
+                ]
+
+                for shape in tShapes {
+                    let positions = shape.map { Position(column: col + $0.0, row: row + $0.1) }
+                    guard positions.allSatisfy({ $0.isValid && isValid($0, for: player, on: board, unlockedOnly: unlockedOnly) }) else { continue }
+
+                    let posSet = Set(positions)
+                    if !seen.contains(posSet) {
+                        seen.insert(posSet)
+                        pods.append(Pattern(type: .pod, positions: posSet, owner: player))
+                    }
+                }
+            }
+        }
+        return pods
+    }
+
+    // HOOK: L-tetromino (line of 3 + 1 stone attached to end)
+    // Like an L: three stones in a row with one perpendicular at one end
+    public func detectHooks(on board: Board, for player: Player, unlockedOnly: Bool = true) -> [Pattern] {
+        var hooks: [Pattern] = []
+        var seen: Set<Set<Position>> = []
+
+        for row in 0..<6 {
+            for col in 0..<6 {
+                let corner = Position(column: col, row: row)
+                guard isValid(corner, for: player, on: board, unlockedOnly: unlockedOnly) else { continue }
+
+                // Hook shapes: line of 3 + 1 perpendicular at one end (L-tetromino)
+                // 8 orientations
+                let hookShapes: [[(Int, Int)]] = [
+                    // Vertical line going up, horizontal extension to right
+                    [(0, 0), (0, 1), (0, 2), (1, 0)],
+                    // Vertical line going up, horizontal extension to left
+                    [(0, 0), (0, 1), (0, 2), (-1, 0)],
+                    // Vertical line going up, horizontal extension to right at top
+                    [(0, 0), (0, 1), (0, 2), (1, 2)],
+                    // Vertical line going up, horizontal extension to left at top
+                    [(0, 0), (0, 1), (0, 2), (-1, 2)],
+                    // Horizontal line going right, vertical extension up
+                    [(0, 0), (1, 0), (2, 0), (0, 1)],
+                    // Horizontal line going right, vertical extension down
+                    [(0, 0), (1, 0), (2, 0), (0, -1)],
+                    // Horizontal line going right, vertical extension up at end
+                    [(0, 0), (1, 0), (2, 0), (2, 1)],
+                    // Horizontal line going right, vertical extension down at end
+                    [(0, 0), (1, 0), (2, 0), (2, -1)],
+                ]
+
+                for shape in hookShapes {
+                    let positions = shape.map { Position(column: col + $0.0, row: row + $0.1) }
+                    guard positions.allSatisfy({ $0.isValid && isValid($0, for: player, on: board, unlockedOnly: unlockedOnly) }) else { continue }
+
+                    let posSet = Set(positions)
+                    if !seen.contains(posSet) {
+                        seen.insert(posSet)
+                        hooks.append(Pattern(type: .hook, positions: posSet, owner: player))
+                    }
+                }
+            }
+        }
+        return hooks
     }
 }

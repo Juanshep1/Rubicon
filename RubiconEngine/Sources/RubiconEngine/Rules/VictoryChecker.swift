@@ -27,18 +27,19 @@ public struct VictoryChecker: Sendable {
     public init() {}
 
     public func checkVictory(state: GameState) -> VictoryCheckResult {
-        // Check elimination first
-        // Elimination: player loses if their river + hand <= 2 stones
-        // (stones on board don't count for elimination)
+        // Check elimination first (Third Edition rule)
+        // Elimination: player loses if their TOTAL stones <= 2
+        // Total = Stones in Hand + Stones on Board (both locked and unlocked)
+        // Note: River stones do NOT count (they're in the shared pool)
         for player in [Player.light, Player.dark] {
             let opponent = player.opponent
 
             let opponentStonesInHand = opponent == .light ? state.lightStonesInHand : state.darkStonesInHand
-            let opponentRiverCount = state.river(for: opponent).count
-            let opponentRecoverableStones = opponentStonesInHand + opponentRiverCount
+            let opponentStonesOnBoard = state.board.stoneCount(for: opponent)
+            let opponentTotalStones = opponentStonesInHand + opponentStonesOnBoard
 
-            // Elimination: opponent has 2 or fewer stones in hand + river combined
-            if opponentRecoverableStones <= GameState.eliminationThreshold {
+            // Elimination: opponent has 2 or fewer total stones (hand + board)
+            if opponentTotalStones <= GameState.eliminationThreshold {
                 return VictoryCheckResult(hasWinner: true, winner: player, isElimination: true)
             }
         }
@@ -99,6 +100,8 @@ public struct VictoryChecker: Sendable {
         let lines = lockedPatterns.filter { $0.type == .line }
         let bends = lockedPatterns.filter { $0.type == .bend }
         let gates = lockedPatterns.filter { $0.type == .gate }
+        let crosses = lockedPatterns.filter { $0.type == .cross }
+        let hooks = lockedPatterns.filter { $0.type == .hook }
 
         // Twin Rivers: 2 Lines (non-overlapping)
         if let twinRivers = findNonOverlappingPair(from: lines) {
@@ -140,6 +143,65 @@ public struct VictoryChecker: Sendable {
             )
         }
 
+        // NEW VICTORY SETS (Third Edition)
+
+        // The Phalanx: Gate + Cross (non-overlapping)
+        if let phalanx = findNonOverlappingPair(first: gates, second: crosses) {
+            return VictoryCheckResult(
+                hasWinner: true,
+                winner: player,
+                victorySet: .thePhalanx,
+                winningPatterns: [phalanx.0, phalanx.1]
+            )
+        }
+
+        // The Pincer: 2 Hooks (non-overlapping)
+        if let pincer = findNonOverlappingPair(from: hooks) {
+            return VictoryCheckResult(
+                hasWinner: true,
+                winner: player,
+                victorySet: .thePincer,
+                winningPatterns: [pincer.0, pincer.1]
+            )
+        }
+
+        // The Serpent: 2 Bends + 1 Line (all non-overlapping)
+        if let serpent = findSerpent(bends: bends, lines: lines) {
+            return VictoryCheckResult(
+                hasWinner: true,
+                winner: player,
+                victorySet: .theSerpent,
+                winningPatterns: serpent
+            )
+        }
+
+        // The Constellation: 3 Gates (non-overlapping)
+        if let constellation = findNonOverlappingTriple(from: gates) {
+            return VictoryCheckResult(
+                hasWinner: true,
+                winner: player,
+                victorySet: .theConstellation,
+                winningPatterns: constellation
+            )
+        }
+
+        return nil
+    }
+
+    // Helper for The Serpent: 2 Bends + 1 Line
+    private func findSerpent(bends: [Pattern], lines: [Pattern]) -> [Pattern]? {
+        guard bends.count >= 2 && lines.count >= 1 else { return nil }
+
+        for i in 0..<bends.count {
+            for j in (i + 1)..<bends.count {
+                guard !patternsOverlap(bends[i], bends[j]) else { continue }
+                for line in lines {
+                    if !patternsOverlap(bends[i], line) && !patternsOverlap(bends[j], line) {
+                        return [bends[i], bends[j], line]
+                    }
+                }
+            }
+        }
         return nil
     }
 

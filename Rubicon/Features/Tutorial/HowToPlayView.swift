@@ -267,7 +267,7 @@ struct TutorialPageView: View {
                 TutorialBullet(icon: "arrow.down.circle", text: "Drop a stone onto an empty space")
                 TutorialBullet(icon: "arrow.left.and.right", text: "Shift a stone 1-2 spaces")
                 TutorialBullet(icon: "lock.fill", text: "Lock a pattern you've formed")
-                TutorialBullet(icon: "drop.fill", text: "Draw from your river (once per game)")
+                TutorialBullet(icon: "drop.fill", text: "Reclaim ALL stones from your river")
             }
 
             TutorialText("""
@@ -357,8 +357,14 @@ struct TutorialPageView: View {
 
             TutorialHighlight(
                 title: "Strike!",
-                text: "Land on an opponent's UNLOCKED stone to capture it! The captured stone goes to their river.",
+                text: "Land on an opponent's UNLOCKED and ISOLATED stone to capture it! The captured stone goes to their river.",
                 icon: "bolt.fill"
+            )
+
+            TutorialHighlight(
+                title: "Phalanx Protection",
+                text: "A stone adjacent to another friendly stone is PROTECTED and cannot be struck. Only isolated stones can be struck!",
+                icon: "shield.fill"
             )
         }
     }
@@ -403,6 +409,8 @@ struct TutorialPageView: View {
                 PatternShowcase(type: .bend, name: "Bend", description: "L-shaped: 3 stones forming a corner")
                 PatternShowcase(type: .gate, name: "Gate", description: "2x2 square of 4 stones")
                 PatternShowcase(type: .cross, name: "Cross", description: "+ shape: 5 stones (center + 4 arms)")
+                PatternShowcase(type: .pod, name: "Pod", description: "T-shape: 3 stones in a small T")
+                PatternShowcase(type: .hook, name: "Hook", description: "L-tetromino: line of 3 + 1 at end")
             }
 
             TutorialHighlight(
@@ -489,11 +497,39 @@ struct TutorialPageView: View {
                     description: "Lock a cross pattern",
                     isInstant: true
                 )
+
+                VictorySetCard(
+                    name: "The Phalanx",
+                    requirement: "1 Gate + 1 Cross",
+                    description: "Lock one gate and one cross",
+                    isInstant: false
+                )
+
+                VictorySetCard(
+                    name: "The Pincer",
+                    requirement: "2 Hooks",
+                    description: "Lock two non-overlapping hooks",
+                    isInstant: false
+                )
+
+                VictorySetCard(
+                    name: "The Serpent",
+                    requirement: "2 Bends + 1 Line",
+                    description: "Lock two bends and one line",
+                    isInstant: false
+                )
+
+                VictorySetCard(
+                    name: "The Constellation",
+                    requirement: "3 Gates",
+                    description: "Lock three non-overlapping gates",
+                    isInstant: false
+                )
             }
 
             TutorialHighlight(
                 title: "Elimination Win",
-                text: "If your opponent has fewer than 2 total stones, you win automatically!",
+                text: "If your opponent has 2 or fewer total stones (hand + board), you win automatically!",
                 icon: "flame.fill"
             )
         }
@@ -502,7 +538,7 @@ struct TutorialPageView: View {
     private var riverContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             TutorialText("""
-            The River is where your captured stones go. You can reclaim one stone from your river once per game!
+            The River is where your captured stones go. You can reclaim ALL stones from your river by spending a turn!
             """)
 
             // River demo
@@ -515,14 +551,21 @@ struct TutorialPageView: View {
                 icon: "person.crop.circle"
             )
 
+            TutorialHighlight(
+                title: "River Reclamation",
+                text: "Spend your turn to reclaim ALL stones from your river at once! You can do this unlimited times.",
+                icon: "arrow.uturn.backward.circle"
+            )
+
             VStack(alignment: .leading, spacing: 12) {
                 TutorialBullet(icon: "drop.fill", text: "Captured stones go to the owner's river")
-                TutorialBullet(icon: "hand.raised.fill", text: "Draw once per game to get a stone back")
-                TutorialBullet(icon: "arrow.uturn.backward", text: "The stone returns to your hand")
+                TutorialBullet(icon: "hand.raised.fill", text: "Reclaim ALL river stones in one turn")
+                TutorialBullet(icon: "arrow.uturn.backward", text: "Stones return to your hand")
+                TutorialBullet(icon: "infinity", text: "No limit on how often you can reclaim")
             }
 
             TutorialText("""
-            Save your river draw for a crucial moment when you need that extra stone!
+            River reclamation is a powerful recovery move - get all your captured stones back at once!
             """)
         }
     }
@@ -723,6 +766,10 @@ struct PatternMiniView: View {
             return [(0, 0), (1, 0), (0, 1), (1, 1)]
         case .cross:
             return [(1, 0), (0, 1), (1, 1), (2, 1), (1, 2)]
+        case .pod:
+            return [(1, 0), (0, 1), (1, 1)]  // T-shape
+        case .hook:
+            return [(0, 0), (0, 1), (0, 2), (1, 2)]  // L-tetromino
         }
     }
 
